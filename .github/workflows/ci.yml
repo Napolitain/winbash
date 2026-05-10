@@ -26,10 +26,14 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Add Git Unix tools to PATH
+      - name: Install uutils coreutils
         shell: pwsh
         run: |
-          "C:\Program Files\Git\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          cargo install coreutils --locked
+          $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE ".cargo" }
+          $cargoBin = Join-Path $cargoHome "bin"
+          "WINBASH_UUTILS_DIR=$cargoBin" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "WINBASH_COREUTILS=$(Join-Path $cargoBin 'coreutils.exe')" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Check formatting
         run: cargo fmt -- --check

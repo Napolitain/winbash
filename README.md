@@ -210,7 +210,9 @@ assertions.
 
 GitHub Actions runs on `windows-latest` for pushes and pull requests to `main`.
 The workflow checks formatting, runs clippy with warnings denied, and runs the
-full test suite.
+full test suite. CI installs `uutils` coreutils with Cargo and exposes it through
+`WINBASH_COREUTILS` and `WINBASH_UUTILS_DIR`, so the CLI tests exercise the same
+Unix-tool discovery path expected on Windows.
 
 ## Current Limits
 
