@@ -82,6 +82,87 @@ behavior to `uutils`.
 3. A matching command already on `PATH`, for example `ls.exe`.
 4. `coreutils.exe` on `PATH`, called as `coreutils ls ...`.
 
+## Install From Source
+
+Prerequisites:
+
+- Rust installed from <https://rustup.rs/>.
+- `uutils` coreutils available as either separate tools or a `coreutils.exe`
+  multi-call binary.
+
+Install the latest version from GitHub:
+
+```powershell
+cargo install --git https://github.com/Napolitain/winbash.git --locked
+```
+
+Or install from a local checkout:
+
+```powershell
+git clone https://github.com/Napolitain/winbash.git
+cd winbash
+cargo install --path . --locked
+```
+
+Cargo installs `winbash.exe` into:
+
+```powershell
+$env:USERPROFILE\.cargo\bin\winbash.exe
+```
+
+If that directory is not already on your user `PATH`, add it and reopen your
+terminal:
+
+```powershell
+$cargoBin = "$env:USERPROFILE\.cargo\bin"
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if (($userPath -split ';') -notcontains $cargoBin) {
+    [Environment]::SetEnvironmentVariable("Path", "$userPath;$cargoBin", "User")
+}
+```
+
+Point `winbash` at your `uutils` installation if needed:
+
+```powershell
+# Directory containing ls.exe, cat.exe, mkdir.exe, ...
+[Environment]::SetEnvironmentVariable("WINBASH_UUTILS_DIR", "C:\Tools\uutils", "User")
+
+# Or a multi-call coreutils.exe binary.
+[Environment]::SetEnvironmentVariable("WINBASH_COREUTILS", "C:\Tools\uutils\coreutils.exe", "User")
+```
+
+Verify the install:
+
+```powershell
+winbash -c "pwd"
+winbash -c "ls"
+```
+
+## Windows Terminal
+
+After installing from source, add `winbash` as a Windows Terminal profile.
+
+Using the UI:
+
+1. Open Windows Terminal settings.
+2. Select `Add a new profile`.
+3. Select `New empty profile`.
+4. Set `Name` to `winbash`.
+5. Set `Command line` to `%USERPROFILE%\.cargo\bin\winbash.exe`.
+6. Set `Starting directory` to `%USERPROFILE%`.
+7. Save, then open a new `winbash` tab.
+
+Using `settings.json`, add this entry under `profiles.list`:
+
+```json
+{
+  "guid": "{7f9d0cf7-5c3f-4b43-a3c7-28e4a64c7d8c}",
+  "name": "winbash",
+  "commandline": "%USERPROFILE%\\.cargo\\bin\\winbash.exe",
+  "startingDirectory": "%USERPROFILE%"
+}
+```
+
 ## Run
 
 ```powershell
@@ -124,6 +205,12 @@ cargo test
 
 The CLI tests set `WINBASH_NO_RC=1` so local startup files do not affect
 assertions.
+
+## CI
+
+GitHub Actions runs on `windows-latest` for pushes and pull requests to `main`.
+The workflow checks formatting, runs clippy with warnings denied, and runs the
+full test suite.
 
 ## Current Limits
 
