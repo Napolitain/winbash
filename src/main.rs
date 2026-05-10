@@ -2812,23 +2812,23 @@ fn token_start(line: &str, pos: usize) -> usize {
         match quote {
             Some('\'') if ch == '\'' => quote = None,
             Some('"') if ch == '"' => quote = None,
-            Some('"') if ch == '\\' => {
-                if chars
-                    .peek()
-                    .is_some_and(|(_, next)| matches!(next, '"' | '$') || next.is_whitespace())
-                {
-                    chars.next();
-                }
+            Some('"')
+                if ch == '\\'
+                    && chars.peek().is_some_and(|(_, next)| {
+                        matches!(next, '"' | '$') || next.is_whitespace()
+                    }) =>
+            {
+                chars.next();
             }
             Some(_) => {}
             None if ch == '\'' || ch == '"' => quote = Some(ch),
-            None if ch == '\\' => {
-                if chars.peek().is_some_and(|(_, next)| {
+            None if ch == '\\'
+                && chars.peek().is_some_and(|(_, next)| {
                     matches!(next, '\'' | '"' | '$' | ';' | '&' | '|' | '<' | '>')
                         || next.is_whitespace()
-                }) {
-                    chars.next();
-                }
+                }) =>
+            {
+                chars.next();
             }
             None if matches!(ch, '|' | '&' | ';' | '<' | '>') => start = index + ch.len_utf8(),
             None if ch.is_whitespace() => start = index + ch.len_utf8(),
