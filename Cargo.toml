@@ -1,0 +1,15 @@
+[package]
+name = "winbash"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dirs = "6.0.0"
+glob = "0.3.3"
+rustyline = "18.0.0"
+which = "8.0.2"
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Console"] }
+
+[dev-dependencies]
+proptest = "1.11.0"
+tempfile = "3.27.0"
