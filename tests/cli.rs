@@ -238,3 +238,32 @@ fn command_substitution_is_end_to_end() {
     assert_success(&output);
     assert_eq!(stdout_lines(&output), ["assigned"]);
 }
+
+#[cfg(windows)]
+#[test]
+fn extensionless_command_uses_pathext_shim_from_path() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let shim = temp.path().join("winbash-shim.cmd");
+    let extensionless = temp.path().join("winbash-shim");
+    fs::write(&shim, "@echo off\r\necho shim-ok\r\n").expect("cmd shim should be written");
+    fs::write(&extensionless, "# shell shim for non-Windows hosts\n")
+        .expect("extensionless shim should be written");
+
+    let original_path = std::env::var_os("PATH").unwrap_or_default();
+    let path = std::env::join_paths(
+        std::iter::once(temp.path().to_path_buf()).chain(std::env::split_paths(&original_path)),
+    )
+    .expect("PATH should be joinable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_winbash"))
+        .arg("-c")
+        .arg("winbash-shim")
+        .current_dir(temp.path())
+        .env("WINBASH_NO_RC", "1")
+        .env("PATH", path)
+        .output()
+        .expect("winbash should launch");
+
+    assert_success(&output);
+    assert_eq!(stdout_lines(&output), ["shim-ok"]);
+}

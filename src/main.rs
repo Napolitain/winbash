@@ -2450,6 +2450,10 @@ fn command_for(command_name: &str, child_env: &HashMap<String, String>) -> Comma
         return command;
     }
 
+    if let Some(path) = which_in_shell_path(command_name, child_env) {
+        return Command::new(path);
+    }
+
     Command::new(command_name)
 }
 
@@ -2483,11 +2487,67 @@ fn uutils_command(command_name: &str, child_env: &HashMap<String, String>) -> Op
 }
 
 fn which_in_shell_path(command_name: &str, child_env: &HashMap<String, String>) -> Option<PathBuf> {
+    if command_name.contains('/') || command_name.contains('\\') {
+        return None;
+    }
+
+    if cfg!(windows) {
+        return which_in_windows_shell_path(command_name, child_env);
+    }
+
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    match child_env.get("PATH") {
+    match child_env_value(child_env, "PATH") {
         Some(path) => which::which_in(command_name, Some(path), cwd).ok(),
         None => which::which(command_name).ok(),
     }
+}
+
+fn child_env_value<'a>(child_env: &'a HashMap<String, String>, name: &str) -> Option<&'a str> {
+    child_env.get(name).map(String::as_str).or_else(|| {
+        cfg!(windows).then(|| {
+            child_env
+                .iter()
+                .find(|(key, _)| key.eq_ignore_ascii_case(name))
+                .map(|(_, value)| value.as_str())
+        })?
+    })
+}
+
+fn which_in_windows_shell_path(
+    command_name: &str,
+    child_env: &HashMap<String, String>,
+) -> Option<PathBuf> {
+    let path = child_env_value(child_env, "PATH")?;
+    let has_extension = Path::new(command_name).extension().is_some();
+    let extensions = executable_extensions_from(child_env_value(child_env, "PATHEXT"));
+
+    for dir in env::split_paths(path) {
+        if has_extension {
+            let candidate = dir.join(command_name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+            continue;
+        }
+
+        for extension in &extensions {
+            let candidate = dir.join(format!("{command_name}{extension}"));
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    if !has_extension {
+        for dir in env::split_paths(path) {
+            let candidate = dir.join(command_name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    None
 }
 
 fn executable_in_dir(dir: &Path, name: &str) -> PathBuf {
@@ -3008,10 +3068,27 @@ fn path_commands() -> BTreeSet<String> {
 }
 
 fn executable_extensions() -> HashSet<String> {
-    env::var("PATHEXT")
-        .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string())
-        .split(';')
+    let pathext = env::var("PATHEXT").ok();
+    executable_extensions_from(pathext.as_deref())
+        .into_iter()
         .map(|extension| extension.to_ascii_lowercase())
+        .collect()
+}
+
+fn executable_extensions_from(pathext: Option<&str>) -> Vec<String> {
+    pathext
+        .unwrap_or(".COM;.EXE;.BAT;.CMD")
+        .split(';')
+        .filter_map(|extension| {
+            let extension = extension.trim();
+            if extension.is_empty() {
+                None
+            } else if extension.starts_with('.') {
+                Some(extension.to_string())
+            } else {
+                Some(format!(".{extension}"))
+            }
+        })
         .collect()
 }
 
