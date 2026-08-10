@@ -91,7 +91,7 @@ scoop bucket add napolitain https://github.com/Napolitain/scoop
 scoop install napolitain/winbash
 ```
 
-The bucket manifest installs the lean `uutils` coreutils package automatically.
+The bucket manifest installs the full `uutils` coreutils package automatically.
 Update the bucket and `winbash` to the newest successful `main` build with:
 
 ```powershell
