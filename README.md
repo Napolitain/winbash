@@ -82,6 +82,35 @@ behavior to `uutils`.
 3. A matching command already on `PATH`, for example `ls.exe`.
 4. `coreutils.exe` on `PATH`, called as `coreutils ls ...`.
 
+## Install with Scoop
+
+Add the `napolitain` bucket, then install `winbash`:
+
+```powershell
+scoop bucket add napolitain https://github.com/Napolitain/scoop
+scoop install napolitain/winbash
+```
+
+The bucket manifest installs the lean `uutils` coreutils package automatically.
+Update the bucket and `winbash` to the newest successful `main` build with:
+
+```powershell
+scoop update
+scoop update winbash
+```
+
+The release manifest is also available directly if you do not want to add the
+bucket:
+
+```powershell
+scoop install https://github.com/Napolitain/winbash/releases/download/continuous/winbash.json
+```
+
+The `continuous` release is a mutable prerelease rather than an immutable
+versioned release. Its version includes the Cargo package version, CI run
+number, and source commit. The `napolitain` bucket synchronizes that manifest
+automatically.
+
 ## Install From Source
 
 Prerequisites:
@@ -140,7 +169,8 @@ winbash -c "ls"
 
 ## Windows Terminal
 
-After installing from source, add `winbash` as a Windows Terminal profile.
+After installing with Scoop or from source, add `winbash` as a Windows Terminal
+profile.
 
 Using the UI:
 
@@ -148,7 +178,7 @@ Using the UI:
 2. Select `Add a new profile`.
 3. Select `New empty profile`.
 4. Set `Name` to `winbash`.
-5. Set `Command line` to `%USERPROFILE%\.cargo\bin\winbash.exe`.
+5. Set `Command line` to `winbash.exe`.
 6. Set `Starting directory` to `%USERPROFILE%`.
 7. Save, then open a new `winbash` tab.
 
@@ -158,7 +188,7 @@ Using `settings.json`, add this entry under `profiles.list`:
 {
   "guid": "{7f9d0cf7-5c3f-4b43-a3c7-28e4a64c7d8c}",
   "name": "winbash",
-  "commandline": "%USERPROFILE%\\.cargo\\bin\\winbash.exe",
+  "commandline": "winbash.exe",
   "startingDirectory": "%USERPROFILE%"
 }
 ```
@@ -213,6 +243,11 @@ The workflow checks formatting, runs clippy with warnings denied, and runs the
 full test suite. CI installs `uutils` coreutils with Cargo and exposes it through
 `WINBASH_COREUTILS` and `WINBASH_UUTILS_DIR`, so the CLI tests exercise the same
 Unix-tool discovery path expected on Windows.
+
+After those checks pass on `main`, CI updates the rolling `continuous` GitHub
+prerelease. It publishes a portable x64 ZIP, a SHA-256 checksum, and the Scoop
+manifest used by the install command above. Pull requests never publish release
+assets.
 
 ## Current Limits
 
