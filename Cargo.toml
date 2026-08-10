@@ -2,6 +2,10 @@
 name = "winbash"
 version = "0.1.0"
 edition = "2024"
+description = "A deliberately small zsh-like shell for Windows"
+license = "MIT"
+repository = "https://github.com/Napolitain/winbash"
+homepage = "https://github.com/Napolitain/winbash"
 
 [dependencies]
 dirs = "6.0.0"

@@ -9,10 +9,15 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+
 jobs:
   rust:
     name: Rust checks
     runs-on: windows-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -43,3 +48,130 @@ jobs:
 
       - name: Test
         run: cargo test
+
+  release:
+    name: Publish continuous release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: rust
+    runs-on: windows-latest
+    concurrency:
+      group: ${{ github.repository }}-continuous-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build portable executable
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: cargo build --locked --release --target x86_64-pc-windows-msvc
+
+      - name: Package release assets
+        id: package
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
+          $packages = @($metadata.packages | Where-Object { $_.name -eq 'winbash' })
+          if ($packages.Count -ne 1) {
+              throw "Expected exactly one winbash package, found $($packages.Count)."
+          }
+
+          $package = & ./scripts/package-release.ps1 `
+              -BaseVersion $packages[0].version `
+              -RunNumber $env:GITHUB_RUN_NUMBER `
+              -CommitSha $env:GITHUB_SHA `
+              -BinaryPath 'target/x86_64-pc-windows-msvc/release/winbash.exe' `
+              -OutputDirectory 'target/release-package' `
+              -Repository $env:GITHUB_REPOSITORY
+
+          "release_version=$($package.ReleaseVersion)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "archive_path=$($package.ArchivePath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "checksum_path=$($package.ChecksumPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "manifest_path=$($package.ManifestPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Validate release assets
+        shell: pwsh
+        env:
+          ARCHIVE_PATH: ${{ steps.package.outputs.archive_path }}
+          CHECKSUM_PATH: ${{ steps.package.outputs.checksum_path }}
+          MANIFEST_PATH: ${{ steps.package.outputs.manifest_path }}
+          RELEASE_VERSION: ${{ steps.package.outputs.release_version }}
+        run: |
+          $extractPath = Join-Path $env:RUNNER_TEMP 'winbash-package'
+          Expand-Archive -LiteralPath $env:ARCHIVE_PATH -DestinationPath $extractPath
+
+          $actualEntries = @(Get-ChildItem -LiteralPath $extractPath | ForEach-Object Name | Sort-Object)
+          $expectedEntries = @('LICENSE', 'README.md', 'winbash.exe') | Sort-Object
+          if (Compare-Object $expectedEntries $actualEntries) {
+              throw "Unexpected archive contents: $($actualEntries -join ', ')"
+          }
+
+          $archiveName = [IO.Path]::GetFileName($env:ARCHIVE_PATH)
+          $archiveHash = (Get-FileHash -LiteralPath $env:ARCHIVE_PATH -Algorithm SHA256).Hash.ToLowerInvariant()
+          $checksum = [IO.File]::ReadAllText($env:CHECKSUM_PATH).Trim()
+          if ($checksum -ne "$archiveHash  $archiveName") {
+              throw 'The checksum file does not match the release archive.'
+          }
+
+          $manifest = Get-Content -Raw -LiteralPath $env:MANIFEST_PATH | ConvertFrom-Json
+          $expectedArchiveUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/continuous/$archiveName"
+          if ($manifest.version -ne $env:RELEASE_VERSION -or
+              $manifest.architecture.'64bit'.url -ne $expectedArchiveUrl -or
+              $manifest.architecture.'64bit'.hash -ne $archiveHash -or
+              $manifest.depends -ne 'main/uutils-coreutils-lean' -or
+              $manifest.bin -ne 'winbash.exe' -or
+              $manifest.license -ne 'MIT') {
+              throw 'The Scoop manifest does not match the packaged release.'
+          }
+
+          $schemaPath = Join-Path $env:RUNNER_TEMP 'scoop-schema.json'
+          Invoke-WebRequest `
+              -Uri 'https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/schema.json' `
+              -OutFile $schemaPath
+          $manifestJson = Get-Content -Raw -LiteralPath $env:MANIFEST_PATH
+          if (-not (Test-Json -Json $manifestJson -SchemaFile $schemaPath)) {
+              throw 'The Scoop manifest does not satisfy Scoop schema.json.'
+          }
+
+          $llvmReadObj = Join-Path (rustc --print sysroot) 'lib/rustlib/x86_64-pc-windows-msvc/bin/llvm-readobj.exe'
+          $imports = & $llvmReadObj --coff-imports (Join-Path $extractPath 'winbash.exe') | Out-String
+          if ($imports -match '(?i)(VCRUNTIME|MSVCP|api-ms-win-crt|ucrtbase)') {
+              throw 'The packaged executable dynamically imports the Visual C++ runtime.'
+          }
+
+          $env:WINBASH_NO_RC = '1'
+          & (Join-Path $extractPath 'winbash.exe') -c 'pwd'
+          if ($LASTEXITCODE -ne 0) {
+              throw "The packaged executable smoke test failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Publish continuous prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARCHIVE_PATH: ${{ steps.package.outputs.archive_path }}
+          CHECKSUM_PATH: ${{ steps.package.outputs.checksum_path }}
+          MANIFEST_PATH: ${{ steps.package.outputs.manifest_path }}
+          RELEASE_VERSION: ${{ steps.package.outputs.release_version }}
+          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          & ./scripts/publish-continuous-release.ps1 `
+              -Repository $env:GITHUB_REPOSITORY `
+              -CommitSha $env:GITHUB_SHA `
+              -ReleaseVersion $env:RELEASE_VERSION `
+              -ArchivePath $env:ARCHIVE_PATH `
+              -ChecksumPath $env:CHECKSUM_PATH `
+              -ManifestPath $env:MANIFEST_PATH `
+              -WorkflowUrl $env:WORKFLOW_URL
