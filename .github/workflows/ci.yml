@@ -130,7 +130,7 @@ jobs:
           if ($manifest.version -ne $env:RELEASE_VERSION -or
               $manifest.architecture.'64bit'.url -ne $expectedArchiveUrl -or
               $manifest.architecture.'64bit'.hash -ne $archiveHash -or
-              $manifest.depends -ne 'main/uutils-coreutils-lean' -or
+              $manifest.depends -ne 'main/uutils-coreutils' -or
               $manifest.bin -ne 'winbash.exe' -or
               $manifest.license -ne 'MIT') {
               throw 'The Scoop manifest does not match the packaged release.'
